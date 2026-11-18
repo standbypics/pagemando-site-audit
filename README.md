@@ -15,14 +15,14 @@ Node.js 20+.
 ```bash
 # From the project directory
 npm test
-node src/cli.js https://example.com --max-pages 10 --json report.json
+node src/cli.js https://example.com --max-pages 10 --delay-ms 500 --json report.json
 
 # Optional: install local CLI command
 npm link
 pagemando-audit https://example.com --max-pages 5
 ```
 
-Only audit websites you own or have permission to test. Respect robots.txt and site policies; this prototype does **not** automatically parse robots.txt or throttle requests. Set a low `--max-pages` value for initial runs.
+Only audit websites you own or have permission to test. Respect robots.txt and site policies; this prototype does **not** automatically parse robots.txt or throttle requests. Set a low `--max-pages` value and a considerate `--delay-ms` for initial runs. The delay is per HTTP request, not per crawled page; robots.txt restrictions must still be checked manually.
 
 ## Checks
 
@@ -40,6 +40,7 @@ Only audit websites you own or have permission to test. Respect robots.txt and s
 |---|---:|---|
 | `--max-pages N` | `10` | Crawl up to 100 same-origin pages |
 | `--timeout MS` | `10000` | Request timeout in milliseconds |
+| `--delay-ms N` | `0` | Pause N milliseconds between every HTTP request, including link checks (0–60000) |
 | `--json PATH` | none | Write machine-readable JSON report |
 | `--no-link-check` | off | Skip link checking |
 | `--help` | — | Print usage |
@@ -52,7 +53,7 @@ This is a basic static HTML scanner, not a headless browser or standards-complia
 
 ## Roadmap
 
-1. Robots.txt awareness and a polite crawl delay
+1. Robots.txt awareness (polite crawl delay is implemented)
 2. Standards-compliant HTML parsing
 3. Configurable check severity and JSON schema
 4. Optional sitemap.xml discovery

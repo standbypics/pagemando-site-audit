@@ -51,11 +51,18 @@ async function get(url, { fetchImpl, timeoutMs, method = 'GET' }) {
   });
 }
 
-export async function auditSite(rawUrl, { maxPages = 10, timeoutMs = 10000, fetchImpl = fetch, checkLinks = true } = {}) {
+export async function auditSite(rawUrl, { maxPages = 10, timeoutMs = 10000, delayMs = 0, fetchImpl = fetch, sleepImpl = ms => new Promise(resolve => setTimeout(resolve, ms)), checkLinks = true } = {}) {
   const root = new URL(rawUrl);
   if (!['http:', 'https:'].includes(root.protocol)) throw new Error('Only http/https URLs are supported.');
   if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 100) throw new Error('maxPages must be between 1 and 100.');
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120000) throw new Error('timeoutMs must be between 100 and 120000.');
+  if (!Number.isInteger(delayMs) || delayMs < 0 || delayMs > 60000) throw new Error('delayMs must be between 0 and 60000.');
+  let requests = 0;
+  const politeGet = async (url, options) => {
+    if (requests > 0 && delayMs > 0) await sleepImpl(delayMs);
+    requests++;
+    return get(url, options);
+  };
   root.hash = '';
   const origin = root.origin;
   const queue = [root.toString()];
@@ -67,7 +74,7 @@ export async function auditSite(rawUrl, { maxPages = 10, timeoutMs = 10000, fetc
     if (visited.has(url)) continue;
     visited.add(url);
     let res;
-    try { res = await get(url, { fetchImpl, timeoutMs }); }
+    try { res = await politeGet(url, { fetchImpl, timeoutMs }); }
     catch (e) { pages.push({ url, status: null, issues: [{ code: 'fetch-error', severity: 'high', message: String(e.message ?? e) }] }); continue; }
     if (!res.ok) { pages.push({ url, status: res.status, issues: [{ code: 'http-error', severity: 'high', message: `Page returned HTTP ${res.status}.` }] }); continue; }
     if (!(res.headers.get('content-type') ?? '').toLowerCase().includes('html')) {
@@ -97,8 +104,8 @@ export async function auditSite(rawUrl, { maxPages = 10, timeoutMs = 10000, fetc
         continue;
       }
       try {
-        let res = await get(url, { fetchImpl, timeoutMs, method: 'HEAD' });
-        if (res.status === 405 || res.status === 501) res = await get(url, { fetchImpl, timeoutMs });
+        let res = await politeGet(url, { fetchImpl, timeoutMs, method: 'HEAD' });
+        if (res.status === 405 || res.status === 501) res = await politeGet(url, { fetchImpl, timeoutMs });
         if (!res.ok) brokenLinks.push({ url, status: res.status });
       } catch (e) { brokenLinks.push({ url, status: null, error: String(e.message ?? e) }); }
     }
@@ -106,6 +113,7 @@ export async function auditSite(rawUrl, { maxPages = 10, timeoutMs = 10000, fetc
   return {
     tool: 'PageMando Site Audit', version: '0.1.0', auditedAt: new Date().toISOString(),
     root: root.toString(), pages, brokenLinks,
+    requestPolicy: { delayMs, requests },
     summary: { pagesAudited: pages.length, issues: pages.reduce((n, p) => n + p.issues.length, 0), brokenInternalLinks: brokenLinks.length },
     limitations: ['Basic regex-based HTML inspection, not a complete HTML parser.', 'Not a WCAG compliance audit.', 'JavaScript-rendered DOM is not evaluated.', 'Internal links only; no external link verification.', 'HEAD requests may differ from browser GET behavior.']
   };

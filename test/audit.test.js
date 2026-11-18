@@ -38,3 +38,24 @@ test('rejects invalid crawl bounds', async () => {
   await assert.rejects(() => auditSite('file:///etc/passwd'), /http\/https/);
   await assert.rejects(() => auditSite('https://example.com', { maxPages: 101 }), /maxPages/);
 });
+
+
+test('throttles all HTTP requests after the first, including link checks', async () => {
+  const methods = [];
+  const sleeps = [];
+  const fetchImpl = async (url, options) => {
+    methods.push(options.method);
+    return { url, status: 200, ok: true, headers: { get: () => 'text/html' },
+      text: async () => '<html lang="en"><head><title>Home</title><meta name="description" content="Hi"></head><body><h1>Hi</h1><a href="/next">Next</a></body></html>' };
+  };
+  const report = await auditSite('https://example.com/', { maxPages: 1, delayMs: 120, fetchImpl, sleepImpl: async ms => sleeps.push(ms) });
+  assert.deepEqual(methods, ['GET', 'HEAD']);
+  assert.deepEqual(sleeps, [120]);
+  assert.deepEqual(report.requestPolicy, { delayMs: 120, requests: 2 });
+});
+
+test('rejects invalid request delays', async () => {
+  for (const delayMs of [-1, 60001, 1.2]) {
+    await assert.rejects(() => auditSite('https://example.com/', { delayMs }), /delayMs/);
+  }
+});
